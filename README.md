@@ -1,15 +1,15 @@
 # Email Assassin
 
-Inbox cleanup tool with Streamlit UI for managing and cleaning up email accounts.
+High-performance, native inbox cleanup tool for managing and cleaning up email accounts.
 
 ## Installation
 
 ```bash
-uv run streamlit run main.py
+cargo run
 ```
 
 ## Features
 
-- Email account management
-- Bulk email operations
-- Interactive Streamlit interface
+- **Fast Scan:** Multi-threaded email analysis.
+- **Bulk Delete:** Surgical removal of unwanted senders.
+- **Privacy:** Runs locally on your machine.
