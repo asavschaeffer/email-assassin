@@ -4,6 +4,10 @@ use futures::StreamExt;
 
 use super::connect_imap;
 
+/// Maximum UIDs per IMAP command. Keeps individual commands under typical
+/// server command-length limits and avoids long-running single operations.
+const DELETE_CHUNK_SIZE: usize = 1000;
+
 pub async fn nuke_sender(
     email: &str,
     password: &str,
@@ -16,7 +20,7 @@ pub async fn nuke_sender(
 
     // Sanitize sender to prevent malformed IMAP search queries
     let sanitized_sender = sender.replace('"', "");
-    let search_query = format!("FROM \"{}\"", sanitized_sender);
+    let search_query = format!("FROM \"{sanitized_sender}\"");
     let uids = session
         .uid_search(&search_query)
         .await
@@ -27,17 +31,15 @@ pub async fn nuke_sender(
 
     if total == 0 {
         if let Err(e) = session.logout().await {
-            tracing::warn!("Failed to logout after empty search: {}", e);
+            tracing::warn!(error = %e, "logout failed after empty search");
         }
         return Ok(0);
     }
 
-    // Process in chunks of 1000
-    let chunk_size = 1000;
-    for chunk in uid_vec.chunks(chunk_size) {
+    for chunk in uid_vec.chunks(DELETE_CHUNK_SIZE) {
         let uid_str = chunk
             .iter()
-            .map(|u| u.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<_>>()
             .join(",");
 
@@ -64,7 +66,7 @@ pub async fn nuke_sender(
     }
 
     if let Err(e) = session.logout().await {
-        tracing::warn!("Failed to logout after deleting: {}", e);
+        tracing::warn!(error = %e, "logout failed after deletion");
     }
     Ok(total)
 }

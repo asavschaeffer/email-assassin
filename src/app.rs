@@ -58,7 +58,7 @@ impl EmailAssassinApp {
                     self.state.phase = AppPhase::ScanComplete;
                     self.state.delete_progress = 1.0;
                     self.state.delete_status =
-                        format!("Removed {} emails", total_removed);
+                        format!("Removed {total_removed} emails");
                 }
                 BackgroundEvent::DeleteError(msg) => {
                     self.state.error_message = Some(msg);

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppPhase {
     Idle,
     Scanning,
@@ -8,7 +8,7 @@ pub enum AppPhase {
     Deleting,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeleteMode {
     Trash,
     Permanent,

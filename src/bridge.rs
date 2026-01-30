@@ -2,7 +2,6 @@ use crate::imap::{deleter, scanner};
 use crate::state::{DeleteMode, SenderInfo};
 use std::sync::mpsc as std_mpsc;
 use tokio::sync::mpsc as tokio_mpsc;
-use tracing::{error, info};
 
 #[derive(Debug)]
 pub enum UiCommand {
@@ -106,7 +105,7 @@ async fn handle_scan(
 ) {
     let send = |evt: BackgroundEvent| {
         if let Err(e) = tx.send(evt) {
-            tracing::warn!("Failed to send scan event to UI: {}", e);
+            tracing::warn!(error = %e, "failed to send scan event to UI");
         }
         ctx.request_repaint();
     };
@@ -145,7 +144,7 @@ async fn handle_scan(
         let ctx2 = ctx.clone();
         move |progress: f32, status: String| {
             if let Err(e) = tx2.send(BackgroundEvent::ScanProgress { progress, status }) {
-                tracing::warn!("Failed to send scan progress to UI: {}", e);
+                tracing::warn!(error = %e, "failed to send scan progress to UI");
             }
             ctx2.request_repaint();
         }
@@ -175,7 +174,7 @@ async fn handle_delete(
 ) {
     let send = |evt: BackgroundEvent| {
         if let Err(e) = tx.send(evt) {
-            tracing::warn!("Failed to send delete event to UI: {}", e);
+            tracing::warn!(error = %e, "failed to send delete event to UI");
         }
         ctx.request_repaint();
     };
@@ -188,20 +187,19 @@ async fn handle_delete(
     for (i, sender) in senders.iter().enumerate() {
         send(BackgroundEvent::DeleteProgress {
             progress: i as f32 / total as f32,
-            status: format!("Purging {}...", sender),
+            status: format!("Purging {sender}..."),
         });
 
         match deleter::nuke_sender(&email, &password, &folder, sender, use_trash).await {
             Ok(count) => {
                 total_removed += count;
                 removed_senders.push(sender.clone());
-                info!("Removed {} emails from {}", count, sender);
+                tracing::info!(count, sender_index = i, "emails removed from sender");
             }
             Err(e) => {
-                error!("Failed to delete emails from {}: {}", sender, e);
+                tracing::error!(sender_index = i, error = %e, "failed to delete emails from sender");
                 send(BackgroundEvent::DeleteError(format!(
-                    "Failed to purge {}: {}",
-                    sender, e
+                    "Failed to purge {sender}: {e}"
                 )));
             }
         }

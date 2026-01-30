@@ -4,12 +4,18 @@ use crate::ui::donut;
 use egui::Ui;
 use tokio::sync::mpsc::UnboundedSender;
 
+/// Maximum senders shown in the donut chart before grouping the rest.
+const DONUT_MAX_SLICES: usize = 20;
+
+/// Maximum senders shown in the interactive kill list.
+const KILL_LIST_LIMIT: usize = 100;
+
 pub fn draw_dashboard(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<UiCommand>) {
     let busy = state.phase == AppPhase::Scanning || state.phase == AppPhase::Deleting;
 
     // Error display
     if let Some(err) = &state.error_message {
-        ui.colored_label(egui::Color32::RED, format!("Error: {}", err));
+        ui.colored_label(egui::Color32::RED, format!("Error: {err}"));
         ui.add_space(4.0);
     }
 
@@ -77,7 +83,7 @@ pub fn draw_dashboard(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSende
         // Left: Donut chart
         columns[0].heading("Inbox Composition");
         columns[0].add_space(4.0);
-        donut::draw_donut(&mut columns[0], &state.senders, 20);
+        donut::draw_donut(&mut columns[0], &state.senders, DONUT_MAX_SLICES);
 
         // Right: Kill list
         columns[1].heading("Kill List");
@@ -102,7 +108,7 @@ fn draw_kill_list(
     let top_senders: Vec<(String, usize)> = state
         .senders
         .iter()
-        .take(100)
+        .take(KILL_LIST_LIMIT)
         .map(|s| (s.email.clone(), s.count))
         .collect();
 
@@ -113,7 +119,7 @@ fn draw_kill_list(
                 let checked = state.sender_selected.entry(email.clone()).or_insert(false);
                 ui.horizontal(|ui| {
                     ui.checkbox(checked, "");
-                    ui.label(format!("{} ({})", email, count));
+                    ui.label(format!("{email} ({count})"));
                 });
             }
         });
@@ -123,7 +129,7 @@ fn draw_kill_list(
         ui.add_space(4.0);
         ui.colored_label(
             egui::Color32::YELLOW,
-            format!("~{} emails selected for removal", selected_count),
+            format!("~{selected_count} emails selected for removal"),
         );
 
         if ui
@@ -142,13 +148,15 @@ fn draw_kill_list(
             state.delete_status = "Starting deletion...".to_string();
             state.error_message = None;
 
-            let _ = cmd_tx.send(UiCommand::StartDelete {
+            if let Err(e) = cmd_tx.send(UiCommand::StartDelete {
                 email: state.email.clone(),
                 password: state.password.clone(),
                 folder: state.folder.clone(),
                 senders: selected,
                 mode: state.delete_mode.clone(),
-            });
+            }) {
+                tracing::warn!(error = %e, "failed to send delete command");
+            }
         }
     }
 }

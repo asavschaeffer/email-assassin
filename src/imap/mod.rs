@@ -6,6 +6,8 @@ use crate::error::AppError;
 use provider::ImapProvider;
 use std::time::Duration;
 
+/// TCP connect timeout. 30s is generous enough for high-latency networks
+/// while still failing fast on unreachable hosts.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn connect_imap(

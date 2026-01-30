@@ -26,3 +26,6 @@ passwords.txt
 
 # Temp files
 *.tmp
+
+# Local reference docs
+rust-guidelines.txt

@@ -119,7 +119,8 @@ pub fn draw_donut(ui: &mut egui::Ui, senders: &[SenderInfo], max_slices: usize) 
         start_angle += sweep;
     }
 
-    // Center label
+    // Center label — truncate to fit the donut hole at 11pt proportional font.
+    // 25 chars is the display threshold; 22 + "..." keeps it within bounds.
     if let Some((sender, count)) = hovered_sender {
         let truncated = if sender.chars().count() > 25 {
             format!("{}...", sender.chars().take(22).collect::<String>())
@@ -136,7 +137,7 @@ pub fn draw_donut(ui: &mut egui::Ui, senders: &[SenderInfo], max_slices: usize) 
         painter.text(
             center + Vec2::new(0.0, 8.0),
             egui::Align2::CENTER_CENTER,
-            format!("{} emails", count),
+            format!("{count} emails"),
             egui::FontId::proportional(11.0),
             Color32::LIGHT_GRAY,
         );
