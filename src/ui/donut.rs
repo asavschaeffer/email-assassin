@@ -121,8 +121,8 @@ pub fn draw_donut(ui: &mut egui::Ui, senders: &[SenderInfo], max_slices: usize) 
 
     // Center label
     if let Some((sender, count)) = hovered_sender {
-        let truncated = if sender.len() > 25 {
-            format!("{}...", &sender[..22])
+        let truncated = if sender.chars().count() > 25 {
+            format!("{}...", sender.chars().take(22).collect::<String>())
         } else {
             sender.to_string()
         };

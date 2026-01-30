@@ -14,7 +14,7 @@ pub enum DeleteMode {
     Permanent,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SenderInfo {
     pub email: String,
     pub count: usize,

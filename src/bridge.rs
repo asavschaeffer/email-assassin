@@ -105,7 +105,9 @@ async fn handle_scan(
     ctx: egui::Context,
 ) {
     let send = |evt: BackgroundEvent| {
-        let _ = tx.send(evt);
+        if let Err(e) = tx.send(evt) {
+            tracing::warn!("Failed to send scan event to UI: {}", e);
+        }
         ctx.request_repaint();
     };
 
@@ -142,7 +144,9 @@ async fn handle_scan(
         let tx2 = tx.clone();
         let ctx2 = ctx.clone();
         move |progress: f32, status: String| {
-            let _ = tx2.send(BackgroundEvent::ScanProgress { progress, status });
+            if let Err(e) = tx2.send(BackgroundEvent::ScanProgress { progress, status }) {
+                tracing::warn!("Failed to send scan progress to UI: {}", e);
+            }
             ctx2.request_repaint();
         }
     };
@@ -170,7 +174,9 @@ async fn handle_delete(
     ctx: egui::Context,
 ) {
     let send = |evt: BackgroundEvent| {
-        let _ = tx.send(evt);
+        if let Err(e) = tx.send(evt) {
+            tracing::warn!("Failed to send delete event to UI: {}", e);
+        }
         ctx.request_repaint();
     };
 
@@ -199,6 +205,11 @@ async fn handle_delete(
                 )));
             }
         }
+
+        send(BackgroundEvent::DeleteProgress {
+            progress: (i + 1) as f32 / total as f32,
+            status: format!("Completed {}/{}", i + 1, total),
+        });
     }
 
     send(BackgroundEvent::DeleteComplete {

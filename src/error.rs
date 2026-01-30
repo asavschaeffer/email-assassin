@@ -13,10 +13,6 @@ pub enum AppError {
 
     #[error("Connection failed: {0}")]
     Connection(String),
-
-    #[allow(dead_code)]
-    #[error("{0}")]
-    Other(String),
 }
 
 impl From<async_imap::error::Error> for AppError {

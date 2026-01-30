@@ -37,7 +37,7 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
 
     ui.add_space(8.0);
 
-    let can_scan = !busy && !state.email.is_empty() && !state.password.is_empty();
+    let can_scan = !busy && !state.email.is_empty() && state.email.contains('@') && !state.password.is_empty();
     if ui
         .add_enabled(can_scan, egui::Button::new("Start Scan"))
         .clicked()

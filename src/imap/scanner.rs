@@ -1,10 +1,11 @@
 use crate::error::AppError;
-use crate::imap::provider::ImapProvider;
 use crate::state::SenderInfo;
 use regex::Regex;
 use std::collections::HashMap;
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
+
+use super::connect_imap;
 
 static FROM_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)From:\s*(.*)").unwrap());
@@ -30,35 +31,6 @@ fn parse_sender(raw: &[u8]) -> String {
     "unknown".to_string()
 }
 
-async fn connect_imap(
-    email: &str,
-    password: &str,
-    folder: &str,
-) -> Result<async_imap::Session<async_native_tls::TlsStream<async_std::net::TcpStream>>, AppError> {
-    let provider = ImapProvider::from_email(email);
-    let tls = async_native_tls::TlsConnector::new();
-    let tcp = async_std::net::TcpStream::connect((provider.host, provider.port))
-        .await
-        .map_err(|e| AppError::Connection(e.to_string()))?;
-    let tls_stream = tls
-        .connect(provider.host, tcp)
-        .await
-        .map_err(|e| AppError::Tls(e.to_string()))?;
-
-    let client = async_imap::Client::new(tls_stream);
-    let mut session = client
-        .login(email, password)
-        .await
-        .map_err(|(e, _)| AppError::Auth(e.to_string()))?;
-
-    session
-        .select(folder)
-        .await
-        .map_err(|e| AppError::Imap(e.to_string()))?;
-
-    Ok(session)
-}
-
 pub async fn fetch_all_uids(
     email: &str,
     password: &str,
@@ -71,7 +43,9 @@ pub async fn fetch_all_uids(
         .await
         .map_err(|e| AppError::Imap(e.to_string()))?;
 
-    session.logout().await.ok();
+    if let Err(e) = session.logout().await {
+        tracing::warn!("Failed to logout after fetching UIDs: {}", e);
+    }
 
     let mut uid_vec: Vec<u32> = uids.into_iter().collect();
     uid_vec.sort();
@@ -120,7 +94,9 @@ async fn scan_batch(
         }
     }
 
-    session.logout().await.ok();
+    if let Err(e) = session.logout().await {
+        tracing::warn!("Failed to logout after scan batch: {}", e);
+    }
     Ok(senders)
 }
 
@@ -149,9 +125,9 @@ where
 
     let mut handles = Vec::new();
 
-    let email = email.to_string();
-    let password = password.to_string();
-    let folder = folder.to_string();
+    let email: Arc<str> = Arc::from(email);
+    let password: Arc<str> = Arc::from(password);
+    let folder: Arc<str> = Arc::from(folder);
 
     for chunk in chunks {
         let email = email.clone();
@@ -160,7 +136,6 @@ where
         let map = sender_map.clone();
         let completed = completed.clone();
         let cb = progress_cb.clone();
-        let num_chunks = num_chunks;
 
         let handle = tokio::spawn(async move {
             match scan_batch(&email, &password, &folder, &chunk).await {
@@ -184,7 +159,9 @@ where
     }
 
     for handle in handles {
-        handle.await.ok();
+        if let Err(e) = handle.await {
+            tracing::error!("Scan task panicked: {}", e);
+        }
     }
 
     let map = sender_map.lock().await;
