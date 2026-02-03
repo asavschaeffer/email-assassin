@@ -3,6 +3,7 @@ pub mod provider;
 pub mod scanner;
 
 use crate::error::AppError;
+use futures::StreamExt;
 use provider::ImapProvider;
 use std::time::Duration;
 
@@ -43,4 +44,51 @@ pub async fn connect_imap(
         .map_err(|e| AppError::Imap(e.to_string()))?;
 
     Ok(session)
+}
+
+pub async fn list_folders(email: &str, password: &str) -> Result<Vec<String>, AppError> {
+    let provider = ImapProvider::from_email(email);
+    let tls = async_native_tls::TlsConnector::new();
+    let tcp = async_std::future::timeout(
+        CONNECT_TIMEOUT,
+        async_std::net::TcpStream::connect((provider.host, provider.port)),
+    )
+    .await
+    .map_err(|_| AppError::Connection("TCP connect timed out after 30s".to_string()))?
+    .map_err(|e| AppError::Connection(e.to_string()))?;
+
+    let tls_stream = tls
+        .connect(provider.host, tcp)
+        .await
+        .map_err(|e| AppError::Tls(e.to_string()))?;
+
+    let client = async_imap::Client::new(tls_stream);
+    let mut session = client
+        .login(email, password)
+        .await
+        .map_err(|(e, _)| AppError::Auth(e.to_string()))?;
+
+    let names: Vec<String> = session
+        .list(Some(""), Some("*"))
+        .await
+        .map_err(|e| AppError::Imap(e.to_string()))?
+        .filter_map(|result| async { result.ok().map(|name| name.name().to_string()) })
+        .collect()
+        .await;
+
+    session.logout().await.ok();
+
+    let mut folders = names;
+    folders.sort_by(|a, b| {
+        // INBOX always first
+        if a.eq_ignore_ascii_case("INBOX") {
+            std::cmp::Ordering::Less
+        } else if b.eq_ignore_ascii_case("INBOX") {
+            std::cmp::Ordering::Greater
+        } else {
+            a.cmp(b)
+        }
+    });
+
+    Ok(folders)
 }

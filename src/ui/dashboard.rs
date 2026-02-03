@@ -34,14 +34,17 @@ pub fn draw_dashboard(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSende
         _ => {}
     }
 
-    if state.senders.is_empty() && state.phase == AppPhase::Idle {
-        ui.centered_and_justified(|ui| {
-            ui.label("Enter credentials and click Start Scan to begin.");
-        });
-        return;
-    }
-
     if state.senders.is_empty() {
+        let msg = match state.phase {
+            AppPhase::Idle => Some("Enter credentials and click Start Scan to begin."),
+            AppPhase::ScanComplete => Some("No emails found in this folder."),
+            _ => None,
+        };
+        if let Some(text) = msg {
+            ui.centered_and_justified(|ui| {
+                ui.label(text);
+            });
+        }
         return;
     }
 

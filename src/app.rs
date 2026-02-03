@@ -38,6 +38,9 @@ impl EmailAssassinApp {
                 }
                 BackgroundEvent::ScanError(msg) => {
                     self.state.error_message = Some(msg);
+                    if self.state.phase == AppPhase::Connecting {
+                        self.state.available_folders.clear();
+                    }
                     self.state.phase = AppPhase::Idle;
                 }
                 BackgroundEvent::DeleteProgress { progress, status } => {
@@ -63,6 +66,13 @@ impl EmailAssassinApp {
                 BackgroundEvent::DeleteError(msg) => {
                     self.state.error_message = Some(msg);
                     // Don't reset phase - partial failure is tolerated
+                }
+                BackgroundEvent::FoldersFetched { folders } => {
+                    self.state.available_folders = folders;
+                    self.state.folder = "INBOX".to_string();
+                    if self.state.phase == AppPhase::Connecting {
+                        self.state.phase = AppPhase::Idle;
+                    }
                 }
             }
             ctx.request_repaint();

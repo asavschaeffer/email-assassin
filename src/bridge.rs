@@ -1,4 +1,4 @@
-use crate::imap::{deleter, scanner};
+use crate::imap::{self, deleter, scanner};
 use crate::state::{DeleteMode, SenderInfo};
 use std::sync::mpsc as std_mpsc;
 use tokio::sync::mpsc as tokio_mpsc;
@@ -17,6 +17,10 @@ pub enum UiCommand {
         folder: String,
         senders: Vec<String>,
         mode: DeleteMode,
+    },
+    FetchFolders {
+        email: String,
+        password: String,
     },
 }
 
@@ -40,6 +44,9 @@ pub enum BackgroundEvent {
         total_removed: usize,
     },
     DeleteError(String),
+    FoldersFetched {
+        folders: Vec<String>,
+    },
 }
 
 pub struct BridgeChannels {
@@ -89,6 +96,27 @@ async fn background_loop(
                 let ctx2 = ctx.clone();
                 tokio::spawn(async move {
                     handle_delete(email, password, folder, senders, mode, tx, ctx2).await;
+                });
+            }
+            UiCommand::FetchFolders { email, password } => {
+                let tx = event_tx.clone();
+                let ctx2 = ctx.clone();
+                tokio::spawn(async move {
+                    match imap::list_folders(&email, &password).await {
+                        Ok(folders) => {
+                            if let Err(e) = tx.send(BackgroundEvent::FoldersFetched { folders }) {
+                                tracing::warn!(error = %e, "failed to send folders to UI");
+                            }
+                        }
+                        Err(e) => {
+                            if let Err(e2) = tx.send(BackgroundEvent::ScanError(format!(
+                                "Failed to fetch folders: {e}"
+                            ))) {
+                                tracing::warn!(error = %e2, "failed to send folder error to UI");
+                            }
+                        }
+                    }
+                    ctx2.request_repaint();
                 });
             }
         }

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppPhase {
     Idle,
+    Connecting,
     Scanning,
     ScanComplete,
     Deleting,
@@ -47,6 +48,9 @@ pub struct AppState {
 
     // Errors
     pub error_message: Option<String>,
+
+    // Folder discovery
+    pub available_folders: Vec<String>,
 }
 
 impl Default for AppState {
@@ -66,6 +70,7 @@ impl Default for AppState {
             senders: Vec::new(),
             sender_selected: HashMap::new(),
             error_message: None,
+            available_folders: Vec::new(),
         }
     }
 }
