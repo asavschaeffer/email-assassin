@@ -18,6 +18,7 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 async-channel = "2.5.0"
 mimalloc = "0.1"
+image = { version = "0.24", features = ["png"] }
 
 [lints.rust]
 missing_debug_implementations = "warn"

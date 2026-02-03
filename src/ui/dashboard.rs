@@ -142,7 +142,13 @@ fn draw_kill_list(
             let selected: Vec<String> = state
                 .senders
                 .iter()
-                .filter(|s| state.sender_selected.get(&s.email).copied().unwrap_or(false))
+                .filter(|s| {
+                    state
+                        .sender_selected
+                        .get(&s.email)
+                        .copied()
+                        .unwrap_or(false)
+                })
                 .map(|s| s.email.clone())
                 .collect();
 
@@ -152,7 +158,7 @@ fn draw_kill_list(
             state.error_message = None;
 
             if let Err(e) = cmd_tx.send(UiCommand::StartDelete {
-                email: state.email.clone(),
+                email: state.email(),
                 password: state.password.clone(),
                 folder: state.folder.clone(),
                 senders: selected,

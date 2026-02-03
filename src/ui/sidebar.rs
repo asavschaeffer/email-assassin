@@ -1,9 +1,15 @@
 use crate::bridge::UiCommand;
 use crate::state::{AppPhase, AppState, DeleteMode};
+use crate::ui::assets::AppAssets;
 use egui::Ui;
 use tokio::sync::mpsc::UnboundedSender;
 
-pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<UiCommand>) {
+pub fn draw_sidebar(
+    ui: &mut Ui,
+    state: &mut AppState,
+    assets: &AppAssets,
+    cmd_tx: &UnboundedSender<UiCommand>,
+) {
     let busy = matches!(
         state.phase,
         AppPhase::Scanning | AppPhase::Deleting | AppPhase::Connecting
@@ -14,33 +20,75 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
     ui.heading("Credentials");
     ui.add_space(4.0);
 
-    ui.horizontal(|ui| {
-        for (icon, tooltip, domain) in [
-            ("G", "Gmail", "@gmail.com"),
-            ("O", "Outlook", "@outlook.com"),
-            ("Y!", "Yahoo", "@yahoo.com"),
-            ("\u{2601}", "iCloud", "@icloud.com"),
-        ] {
-            let btn = ui.add_enabled(!busy, egui::Button::new(icon).small());
-            if btn.clicked() {
-                if let Some(at) = state.email.find('@') {
-                    state.email.replace_range(at.., domain);
-                } else {
-                    state.email.push_str(domain);
-                }
+    // ── Provider logo buttons ──
+    ui.horizontal_wrapped(|ui| {
+        let providers = [
+            (&assets.icon_gmail, "Gmail", "@gmail.com"),
+            (&assets.icon_outlook, "Outlook", "@outlook.com"),
+            (&assets.icon_yahoo, "Yahoo", "@yahoo.com"),
+            (&assets.icon_icloud, "iCloud", "@icloud.com"),
+        ];
+
+        let selected = state.email_domain.to_lowercase();
+
+        for (texture, tooltip, prov_domain) in providers {
+            let is_selected = selected == *prov_domain;
+
+            let bg_color = if is_selected {
+                egui::Color32::from_rgba_premultiplied(255, 255, 255, 40)
+            } else {
+                egui::Color32::TRANSPARENT
+            };
+
+            let img_btn = egui::ImageButton::new(
+                egui::Image::new(texture)
+                    .fit_to_exact_size(egui::vec2(24.0, 24.0))
+                    .bg_fill(bg_color),
+            )
+            .frame(false)
+            .corner_radius(4.0);
+
+            let btn_response = ui.add_enabled(!busy, img_btn).on_hover_text(tooltip);
+            if btn_response.clicked() {
+                state.email_domain = prov_domain.to_string();
                 state.available_folders.clear();
             }
-            btn.on_hover_text(tooltip);
         }
     });
 
     ui.add_space(4.0);
 
+    // ── Username field with domain suffix overlay ──
     ui.label("Email");
     let email_resp = ui.add_enabled(
         !busy,
-        egui::TextEdit::singleline(&mut state.email).hint_text("you@gmail.com"),
+        egui::TextEdit::singleline(&mut state.email_user).hint_text("username"),
     );
+
+    // If user pasted a full email, split off the domain
+    if let Some(at) = state.email_user.find('@') {
+        let domain = state.email_user[at..].to_owned();
+        state.email_user.truncate(at);
+        if !domain.eq_ignore_ascii_case(&state.email_domain) {
+            state.email_domain = domain;
+            state.available_folders.clear();
+        }
+    }
+
+    // Paint domain suffix right-aligned inside the text field
+    if !state.email_domain.is_empty() {
+        let rect = email_resp.rect;
+        let font_id = egui::TextStyle::Body.resolve(ui.style());
+        let color = ui.visuals().weak_text_color();
+        let padding = ui.spacing().button_padding.x;
+        ui.painter().text(
+            egui::pos2(rect.right() - padding, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            &state.email_domain,
+            font_id,
+            color,
+        );
+    }
 
     ui.add_space(4.0);
     ui.label("App Password");
@@ -58,9 +106,9 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
 
     ui.add_space(8.0);
 
-    let can_connect = !busy
-        && state.email.contains('@')
-        && !state.password.is_empty();
+    let has_username = !state.email_user.is_empty();
+    let has_domain = !state.email_domain.is_empty();
+    let can_connect = !busy && has_username && has_domain && !state.password.is_empty();
 
     if state.phase == AppPhase::Connecting {
         ui.horizontal(|ui| {
@@ -75,7 +123,7 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
         state.error_message = None;
         state.available_folders.clear();
         let _ = cmd_tx.send(UiCommand::FetchFolders {
-            email: state.email.clone(),
+            email: state.email(),
             password: state.password.clone(),
         });
     }
@@ -88,9 +136,8 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
         ui.add_space(4.0);
 
         ui.label("Folder");
-        let selected = state.folder.clone();
         egui::ComboBox::from_id_salt("folder_selector")
-            .selected_text(&selected)
+            .selected_text(&state.folder)
             .width(ui.available_width() - 8.0)
             .show_ui(ui, |ui| {
                 for folder in &state.available_folders {
@@ -101,10 +148,7 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
         ui.add_space(8.0);
 
         ui.label("Scan Depth (0 = all)");
-        ui.add_enabled(
-            !busy,
-            egui::Slider::new(&mut state.scan_depth, 0..=50000),
-        );
+        ui.add_enabled(!busy, egui::Slider::new(&mut state.scan_depth, 0..=50000));
 
         ui.add_space(8.0);
 
@@ -121,7 +165,7 @@ pub fn draw_sidebar(ui: &mut Ui, state: &mut AppState, cmd_tx: &UnboundedSender<
             state.sender_selected.clear();
 
             let _ = cmd_tx.send(UiCommand::StartScan {
-                email: state.email.clone(),
+                email: state.email(),
                 password: state.password.clone(),
                 folder: state.folder.clone(),
                 scan_depth: state.scan_depth,

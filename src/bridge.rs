@@ -102,21 +102,7 @@ async fn background_loop(
                 let tx = event_tx.clone();
                 let ctx2 = ctx.clone();
                 tokio::spawn(async move {
-                    match imap::list_folders(&email, &password).await {
-                        Ok(folders) => {
-                            if let Err(e) = tx.send(BackgroundEvent::FoldersFetched { folders }) {
-                                tracing::warn!(error = %e, "failed to send folders to UI");
-                            }
-                        }
-                        Err(e) => {
-                            if let Err(e2) = tx.send(BackgroundEvent::ScanError(format!(
-                                "Failed to fetch folders: {e}"
-                            ))) {
-                                tracing::warn!(error = %e2, "failed to send folder error to UI");
-                            }
-                        }
-                    }
-                    ctx2.request_repaint();
+                    handle_fetch_folders(email, password, tx, ctx2).await;
                 });
             }
         }
@@ -242,4 +228,27 @@ async fn handle_delete(
         removed_senders,
         total_removed,
     });
+}
+
+async fn handle_fetch_folders(
+    email: String,
+    password: String,
+    tx: std_mpsc::Sender<BackgroundEvent>,
+    ctx: egui::Context,
+) {
+    match imap::list_folders(&email, &password).await {
+        Ok(folders) => {
+            if let Err(e) = tx.send(BackgroundEvent::FoldersFetched { folders }) {
+                tracing::warn!(error = %e, "failed to send folders to UI");
+            }
+        }
+        Err(e) => {
+            if let Err(e2) = tx.send(BackgroundEvent::ScanError(format!(
+                "Failed to fetch folders: {e}"
+            ))) {
+                tracing::warn!(error = %e2, "failed to send folder error to UI");
+            }
+        }
+    }
+    ctx.request_repaint();
 }

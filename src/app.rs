@@ -1,10 +1,11 @@
 use crate::bridge::{BackgroundEvent, UiCommand};
 use crate::state::{AppPhase, AppState};
-use crate::ui::{dashboard, sidebar};
+use crate::ui::{assets::AppAssets, dashboard, sidebar};
 use tokio::sync::mpsc::UnboundedSender;
 
 pub struct EmailAssassinApp {
     state: AppState,
+    assets: AppAssets,
     cmd_tx: UnboundedSender<UiCommand>,
     event_rx: std::sync::mpsc::Receiver<BackgroundEvent>,
 }
@@ -12,8 +13,10 @@ pub struct EmailAssassinApp {
 impl EmailAssassinApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let bridge = crate::bridge::setup_bridge(cc.egui_ctx.clone());
+        let assets = AppAssets::load(&cc.egui_ctx);
         Self {
             state: AppState::default(),
+            assets,
             cmd_tx: bridge.cmd_tx,
             event_rx: bridge.event_rx,
         }
@@ -60,8 +63,7 @@ impl EmailAssassinApp {
                     }
                     self.state.phase = AppPhase::ScanComplete;
                     self.state.delete_progress = 1.0;
-                    self.state.delete_status =
-                        format!("Removed {total_removed} emails");
+                    self.state.delete_status = format!("Removed {total_removed} emails");
                 }
                 BackgroundEvent::DeleteError(msg) => {
                     self.state.error_message = Some(msg);
@@ -87,9 +89,10 @@ impl eframe::App for EmailAssassinApp {
         egui::SidePanel::left("sidebar")
             .resizable(true)
             .default_width(250.0)
+            .min_width(200.0)
             .show(ctx, |ui| {
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    sidebar::draw_sidebar(ui, &mut self.state, &self.cmd_tx);
+                    sidebar::draw_sidebar(ui, &mut self.state, &self.assets, &self.cmd_tx);
                 });
             });
 

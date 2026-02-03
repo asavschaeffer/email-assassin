@@ -23,8 +23,9 @@ pub struct SenderInfo {
 
 #[derive(Debug, Clone)]
 pub struct AppState {
-    // Credentials
-    pub email: String,
+    // Credentials (split for provider quick-select UX)
+    pub email_user: String,
+    pub email_domain: String,
     pub password: String,
     pub folder: String,
 
@@ -56,7 +57,8 @@ pub struct AppState {
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            email: String::new(),
+            email_user: String::new(),
+            email_domain: String::new(),
             password: String::new(),
             folder: "INBOX".to_string(),
             scan_depth: 0,
@@ -76,6 +78,10 @@ impl Default for AppState {
 }
 
 impl AppState {
+    pub fn email(&self) -> String {
+        format!("{}{}", self.email_user, self.email_domain)
+    }
+
     pub fn selected_senders(&self) -> Vec<&SenderInfo> {
         self.senders
             .iter()
