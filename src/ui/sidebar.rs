@@ -56,6 +56,14 @@ pub fn draw_sidebar(
         }
     });
 
+    // Hint 1: prompt to select a provider
+    if state.email_domain.is_empty() {
+        ui.label(
+            egui::RichText::new("Select your email provider")
+                .color(ui.visuals().weak_text_color()),
+        );
+    }
+
     ui.add_space(4.0);
 
     // ── Username field with domain suffix overlay ──
@@ -90,6 +98,13 @@ pub fn draw_sidebar(
         );
     }
 
+    // Hint 2: prompt to enter username
+    if !state.email_domain.is_empty() && state.email_user.is_empty() {
+        ui.label(
+            egui::RichText::new("Enter your username").color(ui.visuals().weak_text_color()),
+        );
+    }
+
     ui.add_space(4.0);
     ui.label("App Password");
     let pass_resp = ui.add_enabled(
@@ -98,6 +113,26 @@ pub fn draw_sidebar(
             .password(true)
             .hint_text("app password"),
     );
+
+    // Hint 3: provider-specific app password link with external-link indicator
+    if !state.email_user.is_empty() && state.password.is_empty() {
+        let hints: &[(&str, &str, &str)] = &[
+            ("@gmail.com", "Generate a Gmail App Password (requires 2FA)", "https://myaccount.google.com/apppasswords"),
+            ("@outlook.com", "Create an Outlook App Password", "https://account.live.com/proofs/AppPassword"),
+            ("@yahoo.com", "Generate a Yahoo App Password", "https://login.yahoo.com/myaccount/security/"),
+            ("@icloud.com", "Create an iCloud App-Specific Password", "https://appleid.apple.com/account/manage/section/security"),
+        ];
+        let domain = state.email_domain.to_lowercase();
+        if let Some((_, label, url)) = hints.iter().find(|(d, _, _)| *d == domain) {
+            let text = format!("{label} \u{2197}"); // ↗ external link arrow
+            ui.horizontal_wrapped(|ui| {
+                ui.hyperlink_to(
+                    egui::RichText::new(text).color(ui.visuals().weak_text_color()),
+                    *url,
+                );
+            });
+        }
+    }
 
     // Credential change invalidation: collapse back to Stage 1
     if email_resp.changed() || pass_resp.changed() {
@@ -115,17 +150,19 @@ pub fn draw_sidebar(
             ui.spinner();
             ui.label("Connecting...");
         });
-    } else if ui
-        .add_enabled(can_connect, egui::Button::new("Connect"))
-        .clicked()
-    {
-        state.phase = AppPhase::Connecting;
-        state.error_message = None;
-        state.available_folders.clear();
-        let _ = cmd_tx.send(UiCommand::FetchFolders {
-            email: state.email(),
-            password: state.password.clone(),
-        });
+    } else if state.available_folders.is_empty() {
+        if ui
+            .add_enabled(can_connect, egui::Button::new("Connect"))
+            .clicked()
+        {
+            state.phase = AppPhase::Connecting;
+            state.error_message = None;
+            state.available_folders.clear();
+            let _ = cmd_tx.send(UiCommand::FetchFolders {
+                email: state.email(),
+                password: state.password.clone(),
+            });
+        }
     }
 
     // ── Stage 2: Folder & Scan config (only after successful connect) ──
@@ -145,10 +182,32 @@ pub fn draw_sidebar(
                 }
             });
 
+        // Hint 4: prompt to choose a folder
+        if state.folder.is_empty() {
+            ui.label(
+                egui::RichText::new("Choose a mailbox folder to scan")
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
+
         ui.add_space(8.0);
 
-        ui.label("Scan Depth (0 = all)");
-        ui.add_enabled(!busy, egui::Slider::new(&mut state.scan_depth, 0..=50000));
+        const MAX_DEPTH: u32 = 50_000;
+        let label = if state.scan_depth >= MAX_DEPTH {
+            "Scan Depth: All".to_string()
+        } else {
+            format!("Scan Depth: {}", state.scan_depth)
+        };
+        ui.label(label);
+        ui.add_enabled(!busy, egui::Slider::new(&mut state.scan_depth, 0..=MAX_DEPTH).show_value(false));
+
+        // Hint 5: explain scan depth
+        if state.scan_depth >= MAX_DEPTH && !state.folder.is_empty() {
+            ui.label(
+                egui::RichText::new("Drag left to limit how many emails to scan")
+                    .color(ui.visuals().weak_text_color()),
+            );
+        }
 
         ui.add_space(8.0);
 
@@ -164,11 +223,12 @@ pub fn draw_sidebar(
             state.senders.clear();
             state.sender_selected.clear();
 
+            let depth = if state.scan_depth >= MAX_DEPTH { 0 } else { state.scan_depth };
             let _ = cmd_tx.send(UiCommand::StartScan {
                 email: state.email(),
                 password: state.password.clone(),
                 folder: state.folder.clone(),
-                scan_depth: state.scan_depth,
+                scan_depth: depth,
             });
         }
 

@@ -61,7 +61,7 @@ impl Default for AppState {
             email_domain: String::new(),
             password: String::new(),
             folder: "INBOX".to_string(),
-            scan_depth: 0,
+            scan_depth: 50_000,
             phase: AppPhase::Idle,
             delete_mode: DeleteMode::Trash,
             scan_progress: 0.0,
